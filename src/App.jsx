@@ -1,9 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { FileText, AlertTriangle, Calculator, ClipboardList } from "lucide-react";
 
 const initialForm = {
@@ -37,7 +32,7 @@ function formatMoney(value) {
 }
 
 function formatPercent(value) {
-  return `${value.toFixed(1)}%`;
+  return `${Number(value || 0).toFixed(1)}%`;
 }
 
 function daysBetween(date1, date2) {
@@ -46,6 +41,27 @@ function daysBetween(date1, date2) {
   const d2 = new Date(date2);
   const ms = d2 - d1;
   return Math.round(ms / (1000 * 60 * 60 * 24));
+}
+
+function sectionStyle() {
+  return {
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: 20,
+    boxShadow: "0 2px 10px rgba(15, 23, 42, 0.05)",
+  };
+}
+
+function inputStyle() {
+  return {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #cbd5e1",
+    fontSize: 14,
+    boxSizing: "border-box",
+  };
 }
 
 function buildRiskFlags(metrics) {
@@ -181,129 +197,223 @@ export default function BankReportingMVP() {
     ["revisedCompletionDate", "Revised Completion Date"],
   ];
 
+  const styles = {
+    page: {
+      minHeight: "100vh",
+      background: "#f8fafc",
+      padding: 24,
+      fontFamily: "Arial, sans-serif",
+      color: "#0f172a",
+    },
+    container: {
+      maxWidth: 1280,
+      margin: "0 auto",
+    },
+    hero: {
+      background: "#ffffff",
+      border: "1px solid #e2e8f0",
+      borderRadius: 20,
+      padding: 24,
+      boxShadow: "0 2px 10px rgba(15, 23, 42, 0.05)",
+      marginBottom: 24,
+    },
+    grid: {
+      display: "grid",
+      gridTemplateColumns: "1.25fr 0.9fr",
+      gap: 24,
+      alignItems: "start",
+    },
+    fieldGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 16,
+    },
+    label: {
+      display: "block",
+      marginBottom: 6,
+      fontSize: 14,
+      fontWeight: 600,
+    },
+    buttonRow: {
+      display: "flex",
+      gap: 12,
+      marginTop: 18,
+      flexWrap: "wrap",
+    },
+    primaryButton: {
+      background: "#0f172a",
+      color: "#ffffff",
+      border: "none",
+      borderRadius: 10,
+      padding: "10px 16px",
+      cursor: "pointer",
+      fontSize: 14,
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+    },
+    secondaryButton: {
+      background: "#ffffff",
+      color: "#0f172a",
+      border: "1px solid #cbd5e1",
+      borderRadius: 10,
+      padding: "10px 16px",
+      cursor: "pointer",
+      fontSize: 14,
+    },
+    metricGrid: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 14,
+    },
+    metricCard: {
+      background: "#f8fafc",
+      borderRadius: 12,
+      padding: 16,
+      border: "1px solid #e2e8f0",
+    },
+    riskCard: {
+      background: "#ffffff",
+      border: "1px solid #e2e8f0",
+      borderRadius: 12,
+      padding: 14,
+      fontSize: 14,
+      lineHeight: 1.5,
+      marginBottom: 10,
+    },
+    titleRow: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 14,
+      fontSize: 20,
+      fontWeight: 700,
+    },
+    textarea: {
+      width: "100%",
+      minHeight: 140,
+      padding: 12,
+      borderRadius: 10,
+      border: "1px solid #cbd5e1",
+      fontSize: 14,
+      boxSizing: "border-box",
+      resize: "vertical",
+    },
+    reportBox: {
+      width: "100%",
+      minHeight: 520,
+      padding: 12,
+      borderRadius: 12,
+      border: "1px solid #cbd5e1",
+      fontSize: 13,
+      boxSizing: "border-box",
+      fontFamily: "Consolas, monospace",
+      resize: "vertical",
+    },
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
+    <div style={styles.page}>
+      <div style={styles.container}>
+        <div style={styles.hero}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight">Bank Reporting MVP</h1>
-              <p className="mt-2 max-w-3xl text-sm text-slate-600">
+              <h1 style={{ margin: 0, fontSize: 36 }}>Bank Reporting MVP</h1>
+              <p style={{ marginTop: 10, color: "#475569", maxWidth: 800, lineHeight: 1.5 }}>
                 A simple prototype for monthly bank reporting automation. Enter the core project data, review the calculated indicators, and generate a draft report narrative for QS review.
               </p>
             </div>
-            <div className="rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700">
+            <div style={{ background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", height: "fit-content" }}>
               Version 1 prototype
             </div>
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <Card className="rounded-3xl shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <ClipboardList className="h-5 w-5" />
-                Project Input Form
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                {fields.map(([key, label]) => (
-                  <div key={key} className="space-y-2">
-                    <Label htmlFor={key}>{label}</Label>
-                    <Input
-                      id={key}
-                      type={key.toLowerCase().includes("date") ? "date" : "text"}
-                      value={form[key]}
-                      onChange={(e) => handleChange(key, e.target.value)}
-                      placeholder={label}
-                      className="rounded-2xl"
-                    />
-                  </div>
-                ))}
-              </div>
+        <div style={styles.grid}>
+          <div style={sectionStyle()}>
+            <div style={styles.titleRow}>
+              <ClipboardList size={20} />
+              <span>Project Input Form</span>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="qsComments">QS Comments</Label>
-                <Textarea
-                  id="qsComments"
-                  value={form.qsComments}
-                  onChange={(e) => handleChange("qsComments", e.target.value)}
-                  placeholder="Insert project specific commentary, site observations, claim concerns, variation notes, or lender comments"
-                  className="min-h-[140px] rounded-2xl"
-                />
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={copyReport} className="rounded-2xl">
-                  <FileText className="mr-2 h-4 w-4" />
-                  {copied ? "Copied" : "Copy Draft Report"}
-                </Button>
-                <Button variant="outline" onClick={resetForm} className="rounded-2xl">
-                  Reset Form
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="space-y-6">
-            <Card className="rounded-3xl shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <Calculator className="h-5 w-5" />
-                  Snapshot Metrics
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="text-sm text-slate-500">Total Certified</div>
-                    <div className="mt-1 text-2xl font-semibold">{formatMoney(metrics.totalCertified)}</div>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="text-sm text-slate-500">Certified % of Contract</div>
-                    <div className="mt-1 text-2xl font-semibold">{formatPercent(metrics.certifiedPctOfContract)}</div>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="text-sm text-slate-500">Pending Variations %</div>
-                    <div className="mt-1 text-2xl font-semibold">{formatPercent(metrics.pendingVariationPct)}</div>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="text-sm text-slate-500">Contingency %</div>
-                    <div className="mt-1 text-2xl font-semibold">{formatPercent(metrics.contingencyPct)}</div>
-                  </div>
+            <div style={styles.fieldGrid}>
+              {fields.map(([key, label]) => (
+                <div key={key}>
+                  <label style={styles.label}>{label}</label>
+                  <input
+                    type={key.toLowerCase().includes("date") ? "date" : "text"}
+                    value={form[key]}
+                    onChange={(e) => handleChange(key, e.target.value)}
+                    placeholder={label}
+                    style={inputStyle()}
+                  />
                 </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
 
-            <Card className="rounded-3xl shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <AlertTriangle className="h-5 w-5" />
-                  Auto Risk Flags
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {risks.map((risk, index) => (
-                    <div key={index} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
-                      {risk}
-                    </div>
-                  ))}
+            <div style={{ marginTop: 16 }}>
+              <label style={styles.label}>QS Comments</label>
+              <textarea
+                value={form.qsComments}
+                onChange={(e) => handleChange("qsComments", e.target.value)}
+                placeholder="Insert project specific commentary, site observations, claim concerns, variation notes, or lender comments"
+                style={styles.textarea}
+              />
+            </div>
+
+            <div style={styles.buttonRow}>
+              <button onClick={copyReport} style={styles.primaryButton}>
+                <FileText size={16} />
+                {copied ? "Copied" : "Copy Draft Report"}
+              </button>
+              <button onClick={resetForm} style={styles.secondaryButton}>
+                Reset Form
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ ...sectionStyle(), marginBottom: 24 }}>
+              <div style={styles.titleRow}>
+                <Calculator size={20} />
+                <span>Snapshot Metrics</span>
+              </div>
+              <div style={styles.metricGrid}>
+                <div style={styles.metricCard}>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>Total Certified</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatMoney(metrics.totalCertified)}</div>
                 </div>
-              </CardContent>
-            </Card>
+                <div style={styles.metricCard}>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>Certified % of Contract</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatPercent(metrics.certifiedPctOfContract)}</div>
+                </div>
+                <div style={styles.metricCard}>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>Pending Variations %</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatPercent(metrics.pendingVariationPct)}</div>
+                </div>
+                <div style={styles.metricCard}>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>Contingency %</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatPercent(metrics.contingencyPct)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={sectionStyle()}>
+              <div style={styles.titleRow}>
+                <AlertTriangle size={20} />
+                <span>Auto Risk Flags</span>
+              </div>
+              {risks.map((risk, index) => (
+                <div key={index} style={styles.riskCard}>{risk}</div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <Card className="rounded-3xl shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-xl">Generated Draft Report</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea value={report} readOnly className="min-h-[520px] rounded-2xl font-mono text-sm" />
-          </CardContent>
-        </Card>
+        <div style={{ ...sectionStyle(), marginTop: 24 }}>
+          <div style={styles.titleRow}>Generated Draft Report</div>
+          <textarea value={report} readOnly style={styles.reportBox} />
+        </div>
       </div>
     </div>
   );
