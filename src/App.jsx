@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { FileText, AlertTriangle, Calculator, ClipboardList } from "lucide-react";
+import { FileText, AlertTriangle, Calculator, ClipboardList, Landmark } from "lucide-react";
 
 const initialForm = {
   projectName: "",
@@ -7,11 +7,17 @@ const initialForm = {
   lender: "",
   builder: "",
   contractSum: "",
+  totalApprovedBudget: "",
   previousCertified: "",
   currentClaim: "",
   approvedVariations: "",
   pendingVariations: "",
   contingencyRemaining: "",
+  drawdownRequested: "",
+  hardCostDrawdown: "",
+  softCostDrawdown: "",
+  cumulativeDrawdown: "",
+  costToComplete: "",
   originalCompletionDate: "",
   revisedCompletionDate: "",
   qsComments: "",
@@ -91,16 +97,40 @@ function buildRiskFlags(metrics) {
     );
   }
 
+  if (metrics.drawdownVariance !== 0) {
+    risks.push(
+      `The drawdown requested differs from the sum of the hard cost and soft cost drawdown entries by ${formatMoney(Math.abs(metrics.drawdownVariance))}. This should be reconciled before issue to the lender.`
+    );
+  }
+
+  if (metrics.remainingFunding < metrics.costToComplete && metrics.totalApprovedBudget > 0) {
+    risks.push(
+      "The remaining undrawn funding appears lower than the reported cost to complete, which may indicate a potential funding shortfall and should be reviewed carefully."
+    );
+  }
+
   if (!risks.length) {
     risks.push(
-      "No immediate material cost or programme concerns are evident from the limited data entered, however the position remains subject to review of the supporting documents and actual site conditions."
+      "No immediate material cost, funding or programme concerns are evident from the limited data entered, however the position remains subject to review of the supporting documents and actual site conditions."
     );
   }
 
   return risks;
 }
 
-function buildReport(data, metrics, risks) {
+function buildOverallRisk(metrics, risks) {
+  if (metrics.remainingFunding < metrics.costToComplete && metrics.totalApprovedBudget > 0) {
+    return { rating: "High", color: "#b91c1c", bg: "#fee2e2" };
+  }
+
+  if (metrics.contingencyPct < 3 || metrics.pendingVariationPct > 3 || metrics.delayDays > 14 || metrics.drawdownVariance !== 0) {
+    return { rating: "Moderate", color: "#b45309", bg: "#fef3c7" };
+  }
+
+  return { rating: "Low", color: "#166534", bg: "#dcfce7" };
+}
+
+function buildReport(data, metrics, risks, overallRisk) {
   const totalCertifiedIncludingThisClaim = metrics.previousCertified + metrics.currentClaim;
 
   return `MONTHLY PROGRESS REPORT – DRAFT
@@ -109,24 +139,28 @@ Project: ${data.projectName || "[Project Name]"}
 Borrower: ${data.borrower || "[Borrower]"}
 Lender: ${data.lender || "[Lender]"}
 Builder: ${data.builder || "[Builder]"}
+Overall Risk Rating: ${overallRisk.rating}
 
 1. Executive Summary
-Based on the limited information currently entered into this tool, the works appear to be progressing generally in line with the reported financial position, subject to review of the supporting claim documentation, programme details, variation status and site inspection findings. The current progress claim is ${formatMoney(metrics.currentClaim)} and the total certified value including this claim would be approximately ${formatMoney(totalCertifiedIncludingThisClaim)}, which represents ${formatPercent(metrics.certifiedPctOfContract)} of the stated contract sum.
+Based on the limited information currently entered into this tool, the works appear to be progressing generally in line with the reported financial and funding position, subject to review of the supporting claim documentation, programme details, variation status and site inspection findings. The current progress claim is ${formatMoney(metrics.currentClaim)} and the total certified value including this claim would be approximately ${formatMoney(totalCertifiedIncludingThisClaim)}, which represents ${formatPercent(metrics.certifiedPctOfContract)} of the stated contract sum.
 
 2. Cost Status
-The reported contract sum is ${formatMoney(metrics.contractSum)}. Approved variations entered total ${formatMoney(metrics.approvedVariations)}, while pending variations total ${formatMoney(metrics.pendingVariations)}. The remaining contingency allowance entered is ${formatMoney(metrics.contingencyRemaining)}, equivalent to ${formatPercent(metrics.contingencyPct)} of the contract sum.
+The reported contract sum is ${formatMoney(metrics.contractSum)}. Approved variations entered total ${formatMoney(metrics.approvedVariations)}, while pending variations total ${formatMoney(metrics.pendingVariations)}. The remaining contingency allowance entered is ${formatMoney(metrics.contingencyRemaining)}, equivalent to ${formatPercent(metrics.contingencyPct)} of the contract sum. The reported cost to complete is ${formatMoney(metrics.costToComplete)}.
 
-3. Programme Status
+3. Drawdown Summary
+The drawdown requested for the current period is ${formatMoney(metrics.drawdownRequested)}, comprising hard costs of ${formatMoney(metrics.hardCostDrawdown)} and soft costs of ${formatMoney(metrics.softCostDrawdown)}. The cumulative drawdown to date is reported as ${formatMoney(metrics.cumulativeDrawdown)}. Based on the total approved budget of ${formatMoney(metrics.totalApprovedBudget)}, the remaining undrawn balance is ${formatMoney(metrics.remainingFunding)}.
+
+4. Programme Status
 The original completion date entered is ${data.originalCompletionDate || "[Original Date]"} and the revised completion date is ${data.revisedCompletionDate || "[Revised Date]"}. The current reported movement equates to ${metrics.delayDays > 0 ? `${metrics.delayDays} days of delay` : metrics.delayDays < 0 ? `${Math.abs(metrics.delayDays)} days ahead of the original completion date` : "no net movement between the entered dates"}.
 
-4. Key Risks and Matters to Monitor
+5. Key Risks and Matters to Monitor
 ${risks.map((risk, index) => `${index + 1}. ${risk}`).join("\n")}
 
-5. QS Commentary
+6. QS Commentary
 ${data.qsComments || "[Insert project specific QS commentary here]"}
 
-6. Draft Recommendation
-Subject to verification of the claim against site progress, supporting documentation, approved variation status and any excluded or incomplete works, the current drawdown request appears capable of further assessment. At this stage, there are ${risks.length > 1 ? "matters requiring ongoing monitoring" : "no immediate material issues evident from the limited data entered"}, and the recommended certification position should remain subject to normal QS review and final confirmation.
+7. Draft Recommendation
+Subject to verification of the claim against site progress, supporting documentation, approved variation status, drawdown reconciliation and any excluded or incomplete works, the current drawdown request appears capable of further assessment. At this stage, the reported remaining undrawn balance of ${formatMoney(metrics.remainingFunding)} is ${metrics.remainingFunding >= metrics.costToComplete ? "currently above" : "currently below"} the reported cost to complete of ${formatMoney(metrics.costToComplete)}. The recommended certification position should remain subject to normal QS review and final confirmation.
 `;
 }
 
@@ -136,31 +170,48 @@ export default function BankReportingMVP() {
 
   const metrics = useMemo(() => {
     const contractSum = parseMoney(form.contractSum);
+    const totalApprovedBudget = parseMoney(form.totalApprovedBudget);
     const previousCertified = parseMoney(form.previousCertified);
     const currentClaim = parseMoney(form.currentClaim);
     const approvedVariations = parseMoney(form.approvedVariations);
     const pendingVariations = parseMoney(form.pendingVariations);
     const contingencyRemaining = parseMoney(form.contingencyRemaining);
+    const drawdownRequested = parseMoney(form.drawdownRequested);
+    const hardCostDrawdown = parseMoney(form.hardCostDrawdown);
+    const softCostDrawdown = parseMoney(form.softCostDrawdown);
+    const cumulativeDrawdown = parseMoney(form.cumulativeDrawdown);
+    const costToComplete = parseMoney(form.costToComplete);
     const totalCertified = previousCertified + currentClaim;
+    const drawdownComponentsTotal = hardCostDrawdown + softCostDrawdown;
 
     return {
       contractSum,
+      totalApprovedBudget,
       previousCertified,
       currentClaim,
       approvedVariations,
       pendingVariations,
       contingencyRemaining,
+      drawdownRequested,
+      hardCostDrawdown,
+      softCostDrawdown,
+      cumulativeDrawdown,
+      costToComplete,
       totalCertified,
+      drawdownComponentsTotal,
       certifiedPctOfContract: contractSum ? (totalCertified / contractSum) * 100 : 0,
       claimAsPctOfContract: contractSum ? (currentClaim / contractSum) * 100 : 0,
       pendingVariationPct: contractSum ? (pendingVariations / contractSum) * 100 : 0,
       contingencyPct: contractSum ? (contingencyRemaining / contractSum) * 100 : 0,
+      remainingFunding: totalApprovedBudget ? totalApprovedBudget - cumulativeDrawdown : 0,
+      drawdownVariance: drawdownRequested - drawdownComponentsTotal,
       delayDays: daysBetween(form.originalCompletionDate, form.revisedCompletionDate),
     };
   }, [form]);
 
   const risks = useMemo(() => buildRiskFlags(metrics), [metrics]);
-  const report = useMemo(() => buildReport(form, metrics, risks), [form, metrics, risks]);
+  const overallRisk = useMemo(() => buildOverallRisk(metrics, risks), [metrics, risks]);
+  const report = useMemo(() => buildReport(form, metrics, risks, overallRisk), [form, metrics, risks, overallRisk]);
 
   const handleChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -182,12 +233,13 @@ export default function BankReportingMVP() {
     setCopied(false);
   };
 
-  const fields = [
+  const projectFields = [
     ["projectName", "Project Name"],
     ["borrower", "Borrower"],
     ["lender", "Lender"],
     ["builder", "Builder"],
     ["contractSum", "Contract Sum (AUD)"],
+    ["totalApprovedBudget", "Total Approved Budget (AUD)"],
     ["previousCertified", "Previous Certified (AUD)"],
     ["currentClaim", "Current Claim (AUD)"],
     ["approvedVariations", "Approved Variations (AUD)"],
@@ -195,6 +247,14 @@ export default function BankReportingMVP() {
     ["contingencyRemaining", "Contingency Remaining (AUD)"],
     ["originalCompletionDate", "Original Completion Date"],
     ["revisedCompletionDate", "Revised Completion Date"],
+  ];
+
+  const fundingFields = [
+    ["drawdownRequested", "This Month Drawdown Requested (AUD)"],
+    ["hardCostDrawdown", "Hard Cost Drawdown (AUD)"],
+    ["softCostDrawdown", "Soft Cost Drawdown (AUD)"],
+    ["cumulativeDrawdown", "Cumulative Drawdown to Date (AUD)"],
+    ["costToComplete", "Cost to Complete (AUD)"],
   ];
 
   const styles = {
@@ -206,7 +266,7 @@ export default function BankReportingMVP() {
       color: "#0f172a",
     },
     container: {
-      maxWidth: 1280,
+      maxWidth: 1320,
       margin: "0 auto",
     },
     hero: {
@@ -219,7 +279,7 @@ export default function BankReportingMVP() {
     },
     grid: {
       display: "grid",
-      gridTemplateColumns: "1.25fr 0.9fr",
+      gridTemplateColumns: "1.35fr 0.9fr",
       gap: 24,
       alignItems: "start",
     },
@@ -301,7 +361,7 @@ export default function BankReportingMVP() {
     },
     reportBox: {
       width: "100%",
-      minHeight: 520,
+      minHeight: 560,
       padding: 12,
       borderRadius: 12,
       border: "1px solid #cbd5e1",
@@ -318,13 +378,13 @@ export default function BankReportingMVP() {
         <div style={styles.hero}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 36 }}>Bank Reporting MVP</h1>
-              <p style={{ marginTop: 10, color: "#475569", maxWidth: 800, lineHeight: 1.5 }}>
-                A simple prototype for monthly bank reporting automation. Enter the core project data, review the calculated indicators, and generate a draft report narrative for QS review.
+              <h1 style={{ margin: 0, fontSize: 36 }}>Bank Reporting MVP – Phase 2A</h1>
+              <p style={{ marginTop: 10, color: "#475569", maxWidth: 900, lineHeight: 1.5 }}>
+                This version adds funding metrics for current drawdown, hard and soft costs, cumulative drawdown, cost to complete, remaining undrawn funding and a stronger lender-facing draft report.
               </p>
             </div>
-            <div style={{ background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", height: "fit-content" }}>
-              Version 1 prototype
+            <div style={{ background: overallRisk.bg, color: overallRisk.color, borderRadius: 12, padding: "10px 14px", height: "fit-content", fontWeight: 700 }}>
+              Overall Risk: {overallRisk.rating}
             </div>
           </div>
         </div>
@@ -336,12 +396,32 @@ export default function BankReportingMVP() {
               <span>Project Input Form</span>
             </div>
 
+            <div style={{ marginBottom: 18, fontWeight: 700, color: "#334155" }}>Project and Cost Inputs</div>
             <div style={styles.fieldGrid}>
-              {fields.map(([key, label]) => (
+              {projectFields.map(([key, label]) => (
                 <div key={key}>
                   <label style={styles.label}>{label}</label>
                   <input
                     type={key.toLowerCase().includes("date") ? "date" : "text"}
+                    value={form[key]}
+                    onChange={(e) => handleChange(key, e.target.value)}
+                    placeholder={label}
+                    style={inputStyle()}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 24, marginBottom: 18, fontWeight: 700, color: "#334155", display: "flex", alignItems: "center", gap: 8 }}>
+              <Landmark size={18} />
+              Funding and Drawdown Inputs
+            </div>
+            <div style={styles.fieldGrid}>
+              {fundingFields.map(([key, label]) => (
+                <div key={key}>
+                  <label style={styles.label}>{label}</label>
+                  <input
+                    type="text"
                     value={form[key]}
                     onChange={(e) => handleChange(key, e.target.value)}
                     placeholder={label}
@@ -356,7 +436,7 @@ export default function BankReportingMVP() {
               <textarea
                 value={form.qsComments}
                 onChange={(e) => handleChange("qsComments", e.target.value)}
-                placeholder="Insert project specific commentary, site observations, claim concerns, variation notes, or lender comments"
+                placeholder="Insert project specific commentary, site observations, claim concerns, variation notes, funding comments, or lender comments"
                 style={styles.textarea}
               />
             </div>
@@ -388,13 +468,43 @@ export default function BankReportingMVP() {
                   <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatPercent(metrics.certifiedPctOfContract)}</div>
                 </div>
                 <div style={styles.metricCard}>
-                  <div style={{ color: "#64748b", fontSize: 13 }}>Pending Variations %</div>
-                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatPercent(metrics.pendingVariationPct)}</div>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>This Month Drawdown</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatMoney(metrics.drawdownRequested)}</div>
                 </div>
                 <div style={styles.metricCard}>
-                  <div style={{ color: "#64748b", fontSize: 13 }}>Contingency %</div>
-                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatPercent(metrics.contingencyPct)}</div>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>Cost to Complete</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatMoney(metrics.costToComplete)}</div>
                 </div>
+                <div style={styles.metricCard}>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>Remaining Undrawn Funding</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatMoney(metrics.remainingFunding)}</div>
+                </div>
+                <div style={styles.metricCard}>
+                  <div style={{ color: "#64748b", fontSize: 13 }}>Drawdown Reconciliation Variance</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 700 }}>{formatMoney(metrics.drawdownVariance)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ ...sectionStyle(), marginBottom: 24 }}>
+              <div style={styles.titleRow}>
+                <Landmark size={20} />
+                <span>Drawdown Summary</span>
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {[
+                  ["Hard Cost Drawdown", formatMoney(metrics.hardCostDrawdown)],
+                  ["Soft Cost Drawdown", formatMoney(metrics.softCostDrawdown)],
+                  ["Total Requested Drawdown", formatMoney(metrics.drawdownRequested)],
+                  ["Cumulative Drawdown", formatMoney(metrics.cumulativeDrawdown)],
+                  ["Cost to Complete", formatMoney(metrics.costToComplete)],
+                  ["Remaining Undrawn Balance", formatMoney(metrics.remainingFunding)],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+                    <span style={{ color: "#475569", fontSize: 14 }}>{label}</span>
+                    <span style={{ fontWeight: 700 }}>{value}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
