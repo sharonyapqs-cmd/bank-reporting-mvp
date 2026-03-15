@@ -49,6 +49,16 @@ function daysBetween(date1, date2) {
   return Math.round(ms / (1000 * 60 * 60 * 24));
 }
 
+function formatDate(dateString) {
+  if (!dateString) return "[Date]";
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return dateString;
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 function sectionStyle() {
   return {
     background: "#ffffff",
@@ -70,7 +80,60 @@ function inputStyle() {
   };
 }
 
-function buildRiskFlags(metrics) {
+function getFundingPosition(metrics) {
+  const tolerance = 1;
+  if (Math.abs(metrics.remainingFunding - metrics.costToComplete) <= tolerance) {
+    return {
+      type: "aligned",
+      label: "Aligned",
+      sentence:
+        "The remaining undrawn balance is aligned with the reported cost to complete, indicating no apparent funding surplus or shortfall based on the information currently entered.",
+      shortSentence:
+        "The remaining undrawn balance is aligned with the reported cost to complete.",
+    };
+  }
+
+  if (metrics.remainingFunding > metrics.costToComplete) {
+    return {
+      type: "surplus",
+      label: "Surplus",
+      sentence:
+        "The remaining undrawn balance exceeds the reported cost to complete, indicating an apparent surplus funding position. This may arise from savings, scope reductions, favourable trade outcomes or negative variation movement, and should be confirmed against the current project cost forecast.",
+      shortSentence:
+        "The remaining undrawn balance exceeds the reported cost to complete and indicates an apparent surplus funding position.",
+    };
+  }
+
+  return {
+    type: "shortfall",
+    label: "Shortfall",
+    sentence:
+      "The remaining undrawn balance is below the reported cost to complete, indicating a potential funding shortfall. This position should be reviewed carefully to confirm whether additional borrower equity, budget reallocation, contingency drawdown or revised cost assumptions will be required.",
+    shortSentence:
+      "The remaining undrawn balance is below the reported cost to complete and indicates a potential funding shortfall.",
+  };
+}
+
+function getProgrammeNarrative(metrics, originalDate, revisedDate) {
+  const formattedOriginal = formatDate(originalDate);
+  const formattedRevised = formatDate(revisedDate);
+
+  if (!originalDate || !revisedDate) {
+    return `The original completion date is ${formattedOriginal} and the revised completion date is ${formattedRevised}. Programme movement cannot be fully assessed until both dates are confirmed.`;
+  }
+
+  if (metrics.delayDays === 0) {
+    return `The original completion date of ${formattedOriginal} remains unchanged against the revised completion date of ${formattedRevised}, indicating no reported movement in the programme.`;
+  }
+
+  if (metrics.delayDays > 0) {
+    return `The original completion date of ${formattedOriginal} has moved to ${formattedRevised}, indicating a reported delay of ${metrics.delayDays} days.`;
+  }
+
+  return `The revised completion date of ${formattedRevised} is ${Math.abs(metrics.delayDays)} days earlier than the original completion date of ${formattedOriginal}, indicating an apparent programme recovery or improvement.`;
+}
+
+function buildRiskFlags(metrics, fundingPosition) {
   const risks = [];
 
   if (metrics.claimAsPctOfContract > 12) {
@@ -103,9 +166,9 @@ function buildRiskFlags(metrics) {
     );
   }
 
-  if (metrics.remainingFunding < metrics.costToComplete && metrics.totalApprovedBudget > 0) {
+  if (fundingPosition.type === "shortfall") {
     risks.push(
-      "The remaining undrawn funding appears lower than the reported cost to complete, which may indicate a potential funding shortfall and should be reviewed carefully."
+      "The remaining undrawn funding appears lower than the reported cost to complete, which indicates a potential funding shortfall and should be reviewed carefully."
     );
   }
 
@@ -118,8 +181,8 @@ function buildRiskFlags(metrics) {
   return risks;
 }
 
-function buildOverallRisk(metrics, risks) {
-  if (metrics.remainingFunding < metrics.costToComplete && metrics.totalApprovedBudget > 0) {
+function buildOverallRisk(metrics, fundingPosition) {
+  if (fundingPosition.type === "shortfall") {
     return { rating: "High", color: "#b91c1c", bg: "#fee2e2" };
   }
 
@@ -130,7 +193,19 @@ function buildOverallRisk(metrics, risks) {
   return { rating: "Low", color: "#166534", bg: "#dcfce7" };
 }
 
-function buildReport(data, metrics, risks, overallRisk) {
+function buildRecommendation(metrics, fundingPosition) {
+  const drawdownSentence = metrics.drawdownVariance === 0
+    ? "The requested drawdown is arithmetically aligned with the entered hard and soft cost components."
+    : `The requested drawdown is not yet fully reconciled to the entered hard and soft cost components, with a variance of ${formatMoney(Math.abs(metrics.drawdownVariance))}.`;
+
+  const contingencySentence = metrics.contingencyPct < 3
+    ? `The remaining contingency of ${formatMoney(metrics.contingencyRemaining)} is relatively tight and should continue to be monitored.`
+    : `The remaining contingency of ${formatMoney(metrics.contingencyRemaining)} does not currently indicate immediate pressure based on the information entered.`;
+
+  return `Subject to verification of the claim against site progress, supporting documentation, approved variation status, drawdown reconciliation and any excluded or incomplete works, the current drawdown request appears capable of further assessment. ${fundingPosition.sentence} ${drawdownSentence} ${contingencySentence} The recommended certification position should remain subject to normal QS review and final confirmation.`;
+}
+
+function buildReport(data, metrics, risks, overallRisk, fundingPosition, programmeNarrative) {
   const totalCertifiedIncludingThisClaim = metrics.previousCertified + metrics.currentClaim;
 
   return `MONTHLY PROGRESS REPORT – DRAFT
@@ -148,10 +223,10 @@ Based on the limited information currently entered into this tool, the works app
 The reported contract sum is ${formatMoney(metrics.contractSum)}. Approved variations entered total ${formatMoney(metrics.approvedVariations)}, while pending variations total ${formatMoney(metrics.pendingVariations)}. The remaining contingency allowance entered is ${formatMoney(metrics.contingencyRemaining)}, equivalent to ${formatPercent(metrics.contingencyPct)} of the contract sum. The reported cost to complete is ${formatMoney(metrics.costToComplete)}.
 
 3. Drawdown Summary
-The drawdown requested for the current period is ${formatMoney(metrics.drawdownRequested)}, comprising hard costs of ${formatMoney(metrics.hardCostDrawdown)} and soft costs of ${formatMoney(metrics.softCostDrawdown)}. The cumulative drawdown to date is reported as ${formatMoney(metrics.cumulativeDrawdown)}. Based on the total approved budget of ${formatMoney(metrics.totalApprovedBudget)}, the remaining undrawn balance is ${formatMoney(metrics.remainingFunding)}.
+The drawdown requested for the current period is ${formatMoney(metrics.drawdownRequested)}, comprising hard costs of ${formatMoney(metrics.hardCostDrawdown)} and soft costs of ${formatMoney(metrics.softCostDrawdown)}. The cumulative drawdown to date is reported as ${formatMoney(metrics.cumulativeDrawdown)}. Based on the total approved budget of ${formatMoney(metrics.totalApprovedBudget)}, the remaining undrawn balance is ${formatMoney(metrics.remainingFunding)}. ${fundingPosition.shortSentence}
 
 4. Programme Status
-The original completion date entered is ${data.originalCompletionDate || "[Original Date]"} and the revised completion date is ${data.revisedCompletionDate || "[Revised Date]"}. The current reported movement equates to ${metrics.delayDays > 0 ? `${metrics.delayDays} days of delay` : metrics.delayDays < 0 ? `${Math.abs(metrics.delayDays)} days ahead of the original completion date` : "no net movement between the entered dates"}.
+${programmeNarrative}
 
 5. Key Risks and Matters to Monitor
 ${risks.map((risk, index) => `${index + 1}. ${risk}`).join("\n")}
@@ -160,7 +235,7 @@ ${risks.map((risk, index) => `${index + 1}. ${risk}`).join("\n")}
 ${data.qsComments || "[Insert project specific QS commentary here]"}
 
 7. Draft Recommendation
-Subject to verification of the claim against site progress, supporting documentation, approved variation status, drawdown reconciliation and any excluded or incomplete works, the current drawdown request appears capable of further assessment. At this stage, the reported remaining undrawn balance of ${formatMoney(metrics.remainingFunding)} is ${metrics.remainingFunding >= metrics.costToComplete ? "currently above" : "currently below"} the reported cost to complete of ${formatMoney(metrics.costToComplete)}. The recommended certification position should remain subject to normal QS review and final confirmation.
+${buildRecommendation(metrics, fundingPosition)}
 `;
 }
 
@@ -209,9 +284,17 @@ export default function BankReportingMVP() {
     };
   }, [form]);
 
-  const risks = useMemo(() => buildRiskFlags(metrics), [metrics]);
-  const overallRisk = useMemo(() => buildOverallRisk(metrics, risks), [metrics, risks]);
-  const report = useMemo(() => buildReport(form, metrics, risks, overallRisk), [form, metrics, risks, overallRisk]);
+  const fundingPosition = useMemo(() => getFundingPosition(metrics), [metrics]);
+  const risks = useMemo(() => buildRiskFlags(metrics, fundingPosition), [metrics, fundingPosition]);
+  const overallRisk = useMemo(() => buildOverallRisk(metrics, fundingPosition), [metrics, fundingPosition]);
+  const programmeNarrative = useMemo(
+    () => getProgrammeNarrative(metrics, form.originalCompletionDate, form.revisedCompletionDate),
+    [metrics, form.originalCompletionDate, form.revisedCompletionDate]
+  );
+  const report = useMemo(
+    () => buildReport(form, metrics, risks, overallRisk, fundingPosition, programmeNarrative),
+    [form, metrics, risks, overallRisk, fundingPosition, programmeNarrative]
+  );
 
   const handleChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -378,9 +461,9 @@ export default function BankReportingMVP() {
         <div style={styles.hero}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 36 }}>Bank Reporting MVP – Phase 2A</h1>
+              <h1 style={{ margin: 0, fontSize: 36 }}>Bank Reporting MVP – Phase 2B</h1>
               <p style={{ marginTop: 10, color: "#475569", maxWidth: 900, lineHeight: 1.5 }}>
-                This version adds funding metrics for current drawdown, hard and soft costs, cumulative drawdown, cost to complete, remaining undrawn funding and a stronger lender-facing draft report.
+                This version improves lender-facing wording, introduces DD-MM-YYYY date formatting, and adds smarter commentary for funding alignment, surplus or shortfall positions.
               </p>
             </div>
             <div style={{ background: overallRisk.bg, color: overallRisk.color, borderRadius: 12, padding: "10px 14px", height: "fit-content", fontWeight: 700 }}>
@@ -499,6 +582,7 @@ export default function BankReportingMVP() {
                   ["Cumulative Drawdown", formatMoney(metrics.cumulativeDrawdown)],
                   ["Cost to Complete", formatMoney(metrics.costToComplete)],
                   ["Remaining Undrawn Balance", formatMoney(metrics.remainingFunding)],
+                  ["Funding Position", fundingPosition.label],
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
                     <span style={{ color: "#475569", fontSize: 14 }}>{label}</span>
